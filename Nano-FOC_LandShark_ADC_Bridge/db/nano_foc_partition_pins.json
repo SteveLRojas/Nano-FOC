@@ -1,0 +1,121 @@
+{
+	"partitions" : [
+		{
+			"name" : "Top",
+			"pins" : [
+				{
+					"name" : "led[0]",
+					"strict" : false
+				},
+				{
+					"name" : "led[1]",
+					"strict" : false
+				},
+				{
+					"name" : "led[2]",
+					"strict" : false
+				},
+				{
+					"name" : "led[3]",
+					"strict" : false
+				},
+				{
+					"name" : "int_out",
+					"strict" : false
+				},
+				{
+					"name" : "pwm_ux1_h",
+					"strict" : false
+				},
+				{
+					"name" : "pwm_vx2_h",
+					"strict" : false
+				},
+				{
+					"name" : "pwm_wy1_h",
+					"strict" : false
+				},
+				{
+					"name" : "pwm_ux1_l",
+					"strict" : false
+				},
+				{
+					"name" : "pwm_vx2_l",
+					"strict" : false
+				},
+				{
+					"name" : "pwm_wy1_l",
+					"strict" : false
+				},
+				{
+					"name" : "adc_sck_u",
+					"strict" : false
+				},
+				{
+					"name" : "adc_sck_w",
+					"strict" : false
+				},
+				{
+					"name" : "adc_ncs_u",
+					"strict" : false
+				},
+				{
+					"name" : "adc_ncs_w",
+					"strict" : false
+				},
+				{
+					"name" : "spi_miso",
+					"strict" : false
+				},
+				{
+					"name" : "spi_ncs",
+					"strict" : false
+				},
+				{
+					"name" : "spi_sck",
+					"strict" : false
+				},
+				{
+					"name" : "button_n[3]",
+					"strict" : false
+				},
+				{
+					"name" : "button_n[2]",
+					"strict" : false
+				},
+				{
+					"name" : "button_n[1]",
+					"strict" : false
+				},
+				{
+					"name" : "button_n[0]",
+					"strict" : false
+				},
+				{
+					"name" : "hall_u",
+					"strict" : false
+				},
+				{
+					"name" : "hall_v",
+					"strict" : false
+				},
+				{
+					"name" : "hall_w",
+					"strict" : false
+				},
+				{
+					"name" : "spi_mosi",
+					"strict" : false
+				},
+				{
+					"name" : "adc_miso_u",
+					"strict" : false
+				},
+				{
+					"name" : "adc_miso_w",
+					"strict" : false
+				}
+			]
+		}
+	]
+}
