@@ -1,6 +1,6 @@
 module nano_foc_top
 	(
-		input wire clk,	//25MHz
+		input wire clk,	//50MHz
 		input wire[3:0] button_n,
 		output wire[3:0] led,
 		output wire int_out,
@@ -117,6 +117,7 @@ module nano_foc_top
 	wire clarke_done;
 	wire park_done;
 	wire pid_torque_flux_done;
+	wire limiter_done;
 	wire inverse_park_done;
 	wire inverse_clarke_done;
 
@@ -159,7 +160,7 @@ module nano_foc_top
 	reg signed[13:0] i_w;	//i_w_kcl
 	
 	//Smashed status block (implement on top level)
-	reg[14:0] from_status_ri;
+	reg[15:0] from_status_ri;
 	reg hall_fault_flag;
 	reg power_stage_en;
 	reg adc_done_flag;
@@ -167,6 +168,7 @@ module nano_foc_top
 	reg clarke_done_flag;
 	reg park_done_flag;
 	reg pid_done_flag;
+	reg limiter_done_flag;
 	reg i_park_done_flag;
 	reg i_clarke_done_flag;
 	
@@ -230,7 +232,7 @@ module nano_foc_top
 		.start(spi_start),
 		.done(spi_done),
 		
-		.status({1'b0, from_status_ri}),
+		.status(from_status_ri),
 		.to_ri(to_ri),
 		.from_ri(from_ri),
 		.ri_addr(ri_addr),
@@ -247,7 +249,7 @@ module nano_foc_top
 	begin
 		if(rst)
 		begin
-			from_status_ri <= 15'h0000;
+			from_status_ri <= 16'h0000;
 			hall_fault_flag <= 1'b0;
 			power_stage_en <= 1'b0;
 			adc_done_flag <= 1'b0;
@@ -255,6 +257,7 @@ module nano_foc_top
 			clarke_done_flag <= 1'b0;
 			park_done_flag <= 1'b0;
 			pid_done_flag <= 1'b0;
+			limiter_done_flag <= 1'b0;
 			i_park_done_flag <= 1'b0;
 			i_clarke_done_flag <= 1'b0;
 		end
@@ -269,9 +272,10 @@ module nano_foc_top
 			from_status_ri[6] <= clarke_done_flag;
 			from_status_ri[7] <= park_done_flag;
 			from_status_ri[8] <= pid_done_flag;
-			from_status_ri[9] <= i_park_done_flag;
-			from_status_ri[10] <= i_clarke_done_flag;
-			from_status_ri[14:11] <= button_d;
+			from_status_ri[9] <= limiter_done_flag;
+			from_status_ri[10] <= i_park_done_flag;
+			from_status_ri[11] <= i_clarke_done_flag;
+			from_status_ri[15:12] <= button_d;
 			
 			if(hall_fault | (status_ri_en & ri_wren))
 				hall_fault_flag <= hall_fault | (hall_fault_flag & to_ri[2]);
@@ -282,6 +286,7 @@ module nano_foc_top
 			clarke_done_flag <= ~pwm_trig_25 & (clarke_done_flag | clarke_done);
 			park_done_flag <= ~pwm_trig_25 & (park_done_flag | park_done);
 			pid_done_flag <= ~pwm_trig_25 & (pid_done_flag | pid_torque_flux_done);
+			limiter_done_flag <= ~pwm_trig_25 & (limiter_done_flag | limiter_done);
 			i_park_done_flag <= ~pwm_trig_25 & (i_park_done_flag | inverse_park_done);
 			i_clarke_done_flag <= ~pwm_trig_25 & (i_clarke_done_flag | inverse_clarke_done);
 		end
@@ -444,7 +449,7 @@ module nano_foc_top
 		end
 	end
 	
-	assign m_from_status_ri = {1'b0, {15{status_ri_en_ff}} & from_status_ri};
+	assign m_from_status_ri = {16{status_ri_en_ff}} & from_status_ri;
 	assign m_from_syscon_ri = {16{syscon_ri_en_ff}} & from_syscon_ri;
 	assign m_from_hall_ri = {16{hall_ri_en_ff}} & from_hall_ri;
 	assign m_from_phicon_ri = {16{phicon_ri_en_ff}} & from_phicon_ri;
@@ -708,19 +713,40 @@ module nano_foc_top
 	);
 //#############################################################################
 
+//####### Circular Limiter ####################################################
+	wire[13:0] v_d_limited;	//TODO: Add these to register map
+	wire[13:0] v_q_limited;
+	
+	circular_limiter
+	#(
+		.NUM_BITS(14),
+		.LOG_NUM_SQRT_BITS(5)
+	) circular_limiter_i
+	(
+		.clk(clk_25),
+		.rst(rst),
+		.trig(pid_torque_flux_done),
+		.x_in(v_d),
+		.y_in(v_q),
+		.x_out(v_d_limited),
+		.y_out(v_q_limited),
+		.done(limiter_done)
+    );
+//#############################################################################
+
 //####### Inverse Park Transformation #########################################
 	wire signed[13:0] selected_v_d;
 	wire signed[13:0] selected_v_q;
 	wire signed[13:0] v_alpha;
 	wire signed[13:0] v_beta;
 	
-	assign selected_v_d = vd_vq_source ? v_d_ext : v_d;
-	assign selected_v_q = vd_vq_source ? v_q_ext : v_q;
+	assign selected_v_d = vd_vq_source ? v_d_ext : v_d_limited;
+	assign selected_v_q = vd_vq_source ? v_q_ext : v_q_limited;
 	
 	inverse_park inverse_park_i(
 		.clk(clk_25),
 		.rst(rst),
-		.trig(pid_torque_flux_done),
+		.trig(limiter_done),
 		.in_d(selected_v_d),
 		.in_q(selected_v_q),
 		.cos_phi(cos_phi),

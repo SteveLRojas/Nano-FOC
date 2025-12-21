@@ -66,31 +66,6 @@ set_global_assignment -name PARTITION_COLOR 16764057 -section_id Top
 set_global_assignment -name TIMING_ANALYZER_MULTICORNER_ANALYSIS ON
 set_global_assignment -name NUM_PARALLEL_PROCESSORS 8
 set_global_assignment -name OPTIMIZATION_MODE "HIGH PERFORMANCE EFFORT"
-set_global_assignment -name SDC_FILE src/soc_top.sdc
-set_global_assignment -name VERILOG_FILE src/syscon_ri.v
-set_global_assignment -name VERILOG_FILE src/spi_controller.v
-set_global_assignment -name VERILOG_FILE src/spi_agent.v
-set_global_assignment -name VERILOG_FILE src/sin_cos_lut.v
-set_global_assignment -name VERILOG_FILE src/pwm_ramp.v
-set_global_assignment -name VERILOG_FILE src/pwm_comp.v
-set_global_assignment -name SYSTEMVERILOG_FILE src/pid_control.sv
-set_global_assignment -name VERILOG_FILE src/phi_ramper.v
-set_global_assignment -name VERILOG_FILE src/phicon_ri.v
-set_global_assignment -name VERILOG_FILE src/phi_extrapolator.v
-set_global_assignment -name VERILOG_FILE src/park_transform.v
-set_global_assignment -name VERILOG_FILE src/landshark_adc_bridge_controller.v
-set_global_assignment -name VERILOG_FILE src/inverse_park.v
-set_global_assignment -name VERILOG_FILE src/inverse_clarke.v
-set_global_assignment -name VERILOG_FILE src/hall_ri.v
-set_global_assignment -name VERILOG_FILE src/hall_decoder.v
-set_global_assignment -name VERILOG_FILE src/foc_ri.v
-set_global_assignment -name SYSTEMVERILOG_FILE src/dt_control.sv
-set_global_assignment -name SYSTEMVERILOG_FILE src/button_debounce.sv
-set_global_assignment -name VERILOG_FILE src/balanced_clarke.v
-set_global_assignment -name VERILOG_FILE src/adc_ri.v
-set_global_assignment -name SYSTEMVERILOG_FILE src/nano_foc_top.sv
-set_global_assignment -name QIP_FILE PLL.qip
-set_global_assignment -name QIP_FILE sin_lut_bram.qip
 set_location_assignment PIN_65 -to led[3]
 set_location_assignment PIN_67 -to led[2]
 set_location_assignment PIN_69 -to led[1]
@@ -125,7 +100,7 @@ set_location_assignment PIN_114 -to adc_miso_w
 set_instance_assignment -name FAST_OUTPUT_REGISTER ON -to adc_sck_u
 set_instance_assignment -name FAST_OUTPUT_REGISTER ON -to adc_sck_w
 set_global_assignment -name ENABLE_OCT_DONE OFF
-set_global_assignment -name USE_CONFIGURATION_DEVICE OFF
+set_global_assignment -name USE_CONFIGURATION_DEVICE ON
 set_global_assignment -name CRC_ERROR_OPEN_DRAIN OFF
 set_global_assignment -name STRATIX_DEVICE_IO_STANDARD "3.3-V LVTTL"
 set_global_assignment -name OUTPUT_IO_TIMING_NEAR_END_VMEAS "HALF VCCIO" -rise
@@ -212,4 +187,32 @@ set_instance_assignment -name SLEW_RATE 2 -to led[1]
 set_instance_assignment -name SLEW_RATE 2 -to int_out
 set_instance_assignment -name SLEW_RATE 2 -to led[0]
 set_instance_assignment -name SLEW_RATE 2 -to led[3]
+set_global_assignment -name VERILOG_FILE src/inv_sqrt_restoring.v
+set_global_assignment -name VERILOG_FILE src/circular_limiter.v
+set_global_assignment -name SDC_FILE src/soc_top.sdc
+set_global_assignment -name VERILOG_FILE src/syscon_ri.v
+set_global_assignment -name VERILOG_FILE src/spi_controller.v
+set_global_assignment -name VERILOG_FILE src/spi_agent.v
+set_global_assignment -name VERILOG_FILE src/sin_cos_lut.v
+set_global_assignment -name VERILOG_FILE src/pwm_ramp.v
+set_global_assignment -name VERILOG_FILE src/pwm_comp.v
+set_global_assignment -name SYSTEMVERILOG_FILE src/pid_control.sv
+set_global_assignment -name VERILOG_FILE src/phi_ramper.v
+set_global_assignment -name VERILOG_FILE src/phicon_ri.v
+set_global_assignment -name VERILOG_FILE src/phi_extrapolator.v
+set_global_assignment -name VERILOG_FILE src/park_transform.v
+set_global_assignment -name VERILOG_FILE src/landshark_adc_bridge_controller.v
+set_global_assignment -name VERILOG_FILE src/inverse_park.v
+set_global_assignment -name VERILOG_FILE src/inverse_clarke.v
+set_global_assignment -name VERILOG_FILE src/hall_ri.v
+set_global_assignment -name VERILOG_FILE src/hall_decoder.v
+set_global_assignment -name VERILOG_FILE src/foc_ri.v
+set_global_assignment -name SYSTEMVERILOG_FILE src/dt_control.sv
+set_global_assignment -name SYSTEMVERILOG_FILE src/button_debounce.sv
+set_global_assignment -name VERILOG_FILE src/balanced_clarke.v
+set_global_assignment -name VERILOG_FILE src/adc_ri.v
+set_global_assignment -name SYSTEMVERILOG_FILE src/nano_foc_top.sv
+set_global_assignment -name QIP_FILE PLL.qip
+set_global_assignment -name QIP_FILE sin_lut_bram.qip
+set_global_assignment -name CYCLONEIII_CONFIGURATION_DEVICE EPCS16
 set_instance_assignment -name PARTITION_HIERARCHY root_partition -to | -section_id Top

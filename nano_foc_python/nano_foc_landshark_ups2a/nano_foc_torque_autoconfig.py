@@ -65,6 +65,13 @@ def nano_process_rtmi_responses():
         else:
             rtmi_responses[channel_id].put(value)
 
+def nano_force_ol_velocity_zero():
+    acceleration = 0x3FFF
+    nano_write_reg(regs.R_OL_TARGET_VELOCITY, 0x0000)
+    for idx in range(13):
+        nano_write_reg(regs.R_OL_ACCELERATION, acceleration)
+        acceleration = acceleration >> 1
+
 def main():
     if(debug):
         print("debug enabled")
@@ -76,6 +83,8 @@ def main():
     ser.timeout = 1.0
     ser.write_timeout = 1.0
     ser.open()
+    nano_write_reg(regs.R_INT_OUT_CTRL, 0x0000)
+    nano_write_reg(regs.FR_RTMI_CONTROL, 0x0000)
     time.sleep(0.5)
     ser.reset_input_buffer()
 
@@ -122,11 +131,12 @@ def main():
     print(f"i_w after offset: 0x{nano_read_reg(regs.R_I_W_KCL):04X}") #read_i_w_kcl
 
     #spin the motor
+    nano_force_ol_velocity_zero()
     nano_write_reg(regs.R_SOURCE_CTRL, 0x0001)      #phi_source = 2'b01 (ol_phi), vd_vq_source = 1'b0 (internal), vu_vv_vw_source = 1'b0 (internal)
     nano_write_reg(regs.R_PWM_STEP_SIZE, 0x0002)    #set PWM speed to 2 (30.5 KHz)
     nano_write_reg(regs.R_PWM_DEAD_TIME, 0x0001)    #set dead time to 1 (4 ns)
     nano_write_reg(regs.R_HALL_OFFSET, 0x0000)        #set hall offset to 0
-    nano_write_reg(regs.R_FLUX_TARGET, 2000)    #set flux target
+    nano_write_reg(regs.R_FLUX_TARGET, 3000)    #set flux target
     nano_write_reg(regs.R_FLUX_KP, 0x0100)      #set flux kp
     nano_write_reg(regs.R_FLUX_KI, 0x0020)      #set flux ki
     nano_write_reg(regs.R_FLUX_KD, 0x0000)      #set flux kd
@@ -167,12 +177,12 @@ def main():
     print(f"Hall offset: {phi_dif_avg}")
 
     #apply the offset
-    nano_write_reg(regs.R_HALL_OFFSET, phi_dif_avg)
+    nano_write_reg(regs.R_HALL_OFFSET, phi_dif_avg & 0xFFFF)
 
     #switch to torque mode
     nano_write_reg(regs.R_FLUX_TARGET, 0x0000)    #set flux target
     nano_write_reg(regs.R_SOURCE_CTRL, 0x0003)    #phi_source = 2'b11 (extpol_phi), vd_vq_source = 1'b0 (internal), vu_vv_vw_source = 1'b0 (internal)
-    nano_write_reg(regs.R_TORQUE_TARGET, 0x044C)    #set torque target
+    nano_write_reg(regs.R_TORQUE_TARGET, 1500)    #set torque target
     nano_write_reg(regs.R_OL_TARGET_VELOCITY, 0x0000)    #set ol target velocity to 0
 
     #setup RTMI again
