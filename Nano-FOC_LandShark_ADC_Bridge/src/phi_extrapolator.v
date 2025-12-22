@@ -91,9 +91,9 @@ module phi_extrapolator(
 				k_accum <= {k_accum[24] & ~dt_accum[24], k_accum[23:0]} + {1'b0, k_factor, 8'h00};
 			end
 			
-			update_pulse <= accum_comp;
+			update_pulse <= accum_comp & within_dif_limit;
 			phi_change_ff <= phi_change;
-			extpol_en <= (phi_change_ff | extpol_en) & within_dt_limit & within_dif_limit;
+			extpol_en <= (phi_change_ff | extpol_en) & within_dt_limit;
 			step_size <= 
 				{{14{k_factor[ 0]}} & delta_phi,                        15'b000000000000000} | 
 				{{15{k_factor[ 1]}} & {delta_phi[13], delta_phi},       14'b00000000000000} | 

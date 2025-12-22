@@ -154,7 +154,12 @@ def main():
     #setup RTMI again
     rtmi_responses[0].queue.clear()
     rtmi_responses[1].queue.clear()
-    nano_write_reg(regs.R_INT_OUT_CTRL, 0x1009)    #enable interrupt output, toggle mode, at end of calculation, PWM freq / 10
+    int_out_div = 9
+    int_out_mode = 0
+    int_out_pol = 1 #1 to trigger at start of calculation, 0 to start at the end
+    int_out_en = 1
+    int_out_ctrl = int_out_div | (int_out_mode << 10) | (int_out_pol << 11) | (int_out_en << 12)
+    nano_write_reg(regs.R_INT_OUT_CTRL, int_out_ctrl)
     nano_write_reg(regs.FR_RTMI_CHANNEL_0, regs.R_OL_PHI)  #RTMI channel 0 set to ol_phi
     nano_write_reg(regs.FR_RTMI_CHANNEL_1, regs.R_EXPOL_PHI)  #RTMI channel 1 set to extpol_phi
     nano_configure_rtmi(6, 0, 2, 0, 1, 256, 0)  #unconditional, ch0, 2 channels, not continuous, triggered, 256 samples, 0 threshold
