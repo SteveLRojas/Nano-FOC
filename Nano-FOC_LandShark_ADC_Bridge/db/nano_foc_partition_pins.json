@@ -76,11 +76,7 @@
 					"strict" : false
 				},
 				{
-					"name" : "button_n[3]",
-					"strict" : false
-				},
-				{
-					"name" : "button_n[2]",
+					"name" : "button_n[0]",
 					"strict" : false
 				},
 				{
@@ -88,19 +84,11 @@
 					"strict" : false
 				},
 				{
-					"name" : "button_n[0]",
+					"name" : "button_n[2]",
 					"strict" : false
 				},
 				{
-					"name" : "hall_u",
-					"strict" : false
-				},
-				{
-					"name" : "hall_v",
-					"strict" : false
-				},
-				{
-					"name" : "hall_w",
+					"name" : "button_n[3]",
 					"strict" : false
 				},
 				{
@@ -113,6 +101,18 @@
 				},
 				{
 					"name" : "adc_miso_w",
+					"strict" : false
+				},
+				{
+					"name" : "hall_w",
+					"strict" : false
+				},
+				{
+					"name" : "hall_v",
+					"strict" : false
+				},
+				{
+					"name" : "hall_u",
 					"strict" : false
 				}
 			]

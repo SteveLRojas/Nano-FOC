@@ -124,7 +124,7 @@ def main():
     nano_write_reg(regs.R_SOURCE_CTRL, 0x0001)    #phi_source = 2'b01 (ol_phi), vd_vq_source = 1'b0 (internal), vu_vv_vw_source = 1'b0 (internal)
     nano_write_reg(regs.R_PWM_STEP_SIZE, 0x0002)    #set PWM speed to 2 (30.5 KHz)
     nano_write_reg(regs.R_PWM_DEAD_TIME, 0x0001)    #set dead time to 1 (4 ns)
-    nano_write_reg(regs.R_FLUX_TARGET, 1500)    #set flux target
+    nano_write_reg(regs.R_FLUX_TARGET, 3000)    #set flux target
     nano_write_reg(regs.R_FLUX_KP, 0x0100)    #set flux kp
     nano_write_reg(regs.R_FLUX_KI, 0x0020)    #set flux ki
     nano_write_reg(regs.R_FLUX_KD, 0x0000)    #set flux kd
@@ -135,7 +135,7 @@ def main():
     nano_write_reg(regs.R_STATUS, 0x0000)    #clear faults
     nano_write_reg(regs.R_STATUS, 0x0008)    #power stage on
     time.sleep(0.25)
-    nano_write_reg(regs.R_OL_ACCELERATION, 0x0001)    #ol_acceleration
+    nano_write_reg(regs.R_OL_ACCELERATION, 0x0002)    #ol_acceleration
     nano_write_reg(regs.R_OL_TARGET_VELOCITY, 0x0100)    #ol_target_velocity
     time.sleep(1)
 

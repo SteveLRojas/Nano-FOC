@@ -59,9 +59,32 @@ module nano_foc_top
 //####### IO Control ##########################################################
 	wire rst;
 	wire[3:0] button_d;
-	wire hall_u_d;
-	wire hall_v_d;
-	wire hall_w_d;
+
+	reg hall_u_sync[1:0];
+	reg hall_v_sync[1:0];
+	reg hall_w_sync[1:0];
+	
+	always @(posedge clk_25 or posedge rst)
+	begin
+		if(rst)
+		begin
+			hall_u_sync[0] <= 1'b0;
+			hall_u_sync[1] <= 1'b0;
+			hall_v_sync[0] <= 1'b0;
+			hall_v_sync[1] <= 1'b0;
+			hall_w_sync[0] <= 1'b0;
+			hall_w_sync[1] <= 1'b0;
+		end
+		else
+		begin
+			hall_u_sync[0] <= hall_u;
+			hall_u_sync[1] <= hall_u_sync[0];
+			hall_v_sync[0] <= hall_v;
+			hall_v_sync[1] <= hall_v_sync[0];
+			hall_w_sync[0] <= hall_w;
+			hall_w_sync[1] <= hall_w_sync[0];
+		end
+	end
 	
 	button_debounce
 	#(
@@ -77,74 +100,11 @@ module nano_foc_top
 		.button_out(button_d)
 	);
 	
-	debouncer
-	#(
-		.ENABLE_SYNC(1'b1),
-		.NUM_CHANNELS(3),
-		.TIMER_BITS(5)
-	) debouncer_hall
-	(
-		.clk(clk_25),
-		.rst(rst),
-		.debounce_in({hall_w, hall_v, hall_u}),
-		.debounce_out({hall_w_d, hall_v_d, hall_u_d})
-	);
-	
 	reg rst_250;	//needed for recovery timing reasons
 	always @(posedge clk_250)
 	begin
 		rst_250 <= rst;
 	end
-//#############################################################################
-
-//####### SPI Interface #######################################################
-	wire[23:0] spi_to_host;
-	wire[23:0] spi_from_host;
-	wire spi_start;
-	wire spi_done;
-	
-	spi_agent
-	#(
-		.IMPLEMENTATION(3),
-		.LOAD_MODE(1'b0),
-		.CPOL(CPOL),
-		.CPHA(CPHA),
-		.NUM_BITS(24)
-	) spi_i
-	(
-		.clk(clk_25),
-		.rst(rst),
-		.sck(spi_sck),
-		.ncs(spi_ncs),
-		.mosi(spi_mosi),
-		.miso(spi_miso),
-		.to_host(spi_to_host),
-		.from_host(spi_from_host),
-		.start(spi_start),
-		.done(spi_done)
-	);
-	
-	//ri bus
-	wire[15:0] to_ri;
-	wire[15:0] from_ri;
-	wire[6:0] ri_addr;
-	wire ri_wren;
-	
-	spi_controller spi_controller_i(
-		.clk(clk_25),
-		.rst(rst),
-		
-		.to_host(spi_to_host),
-		.from_host(spi_from_host),
-		.start(spi_start),
-		.done(spi_done),
-		
-		.status(from_status_ri),
-		.to_ri(to_ri),
-		.from_ri(from_ri),
-		.ri_addr(ri_addr),
-		.ri_wren(ri_wren)
-	);
 //#############################################################################
 
 //####### Register Interface ##################################################
@@ -229,6 +189,55 @@ module nano_foc_top
 	wire signed[13:0] torque_kd;
 	wire signed[13:0] v_q;	//torque_pid_out
 	wire signed[13:0] v_q_ext;
+	
+	//SPI
+	wire[23:0] spi_to_host;
+	wire[23:0] spi_from_host;
+	wire spi_start;
+	wire spi_done;
+	
+	spi_agent
+	#(
+		.IMPLEMENTATION(3),
+		.LOAD_MODE(1'b0),
+		.CPOL(CPOL),
+		.CPHA(CPHA),
+		.NUM_BITS(24)
+	) spi_i
+	(
+		.clk(clk_25),
+		.rst(rst),
+		.sck(spi_sck),
+		.ncs(spi_ncs),
+		.mosi(spi_mosi),
+		.miso(spi_miso),
+		.to_host(spi_to_host),
+		.from_host(spi_from_host),
+		.start(spi_start),
+		.done(spi_done)
+	);
+	
+	//ri bus
+	wire[15:0] to_ri;
+	wire[15:0] from_ri;
+	wire[6:0] ri_addr;
+	wire ri_wren;
+	
+	spi_controller spi_controller_i(
+		.clk(clk_25),
+		.rst(rst),
+		
+		.to_host(spi_to_host),
+		.from_host(spi_from_host),
+		.start(spi_start),
+		.done(spi_done),
+		
+		.status(from_status_ri),
+		.to_ri(to_ri),
+		.from_ri(from_ri),
+		.ri_addr(ri_addr),
+		.ri_wren(ri_wren)
+	);
 	
 	//status ri
 	wire status_ri_en;
@@ -460,9 +469,9 @@ module nano_foc_top
 	hall_decoder hall_decoder_i(
 		.clk(clk_25),
 		.rst(rst),
-		.hall_u(hall_u_d),
-		.hall_v(hall_v_d),
-		.hall_w(hall_w_d),
+		.hall_u(hall_u_sync[1]),
+		.hall_v(hall_v_sync[1]),
+		.hall_w(hall_w_sync[1]),
 		.hall_sector(hall_sector),
 		.hall_phi(hall_phi_raw),
 		.hall_step(),
