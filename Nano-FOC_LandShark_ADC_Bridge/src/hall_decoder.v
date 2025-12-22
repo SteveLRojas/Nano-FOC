@@ -4,6 +4,12 @@ module hall_decoder(
 		input wire hall_u,
 		input wire hall_v,
 		input wire hall_w,
+		input wire[13:0] hall_phi_s0,
+		input wire[13:0] hall_phi_s1,
+		input wire[13:0] hall_phi_s2,
+		input wire[13:0] hall_phi_s3,
+		input wire[13:0] hall_phi_s4,
+		input wire[13:0] hall_phi_s5,
 		output reg[2:0] hall_sector,
 		output reg[13:0] hall_phi,
 		output reg hall_step,
@@ -57,27 +63,31 @@ module hall_decoder(
 			prev_v <= hall_v;
 			prev_w <= hall_w;
 			
-			case({hall_u, hall_v, hall_w})
+			case({prev_u, prev_v, prev_w})
 				3'b110: hall_sector <= 3'h0;
 				3'b010: hall_sector <= 3'h1;
 				3'b011: hall_sector <= 3'h2;
 				3'b001: hall_sector <= 3'h3;
 				3'b101: hall_sector <= 3'h4;
 				3'b100: hall_sector <= 3'h5;
-				default: fault <= 1'b1;
+				default: 
+				begin
+					hall_sector <= 3'hX;
+					fault <= 1'b1;
+				end
 			endcase
 			
 			hall_step <= count_up | count_down;
 			hall_dir <= (hall_dir | count_down) & ~count_up;
 			
-			case({hall_u, hall_v, hall_w})
-				3'b110: hall_phi <= 14'd0;
-				3'b010: hall_phi <= 14'd2730;
-				3'b011: hall_phi <= 14'd5461;
-				3'b001: hall_phi <= 14'd8192;
-				3'b101: hall_phi <= 14'd10922;
-				3'b100: hall_phi <= 14'd13653;
-				default: ;
+			case({prev_u, prev_v, prev_w})
+				3'b110: hall_phi <= hall_phi_s0;
+				3'b010: hall_phi <= hall_phi_s1;
+				3'b011: hall_phi <= hall_phi_s2;
+				3'b001: hall_phi <= hall_phi_s3;
+				3'b101: hall_phi <= hall_phi_s4;
+				3'b100: hall_phi <= hall_phi_s5;
+				default: hall_phi <= 14'hXXXX;
 			endcase
 		end
 	end

@@ -104,15 +104,15 @@
 					"strict" : false
 				},
 				{
+					"name" : "hall_u",
+					"strict" : false
+				},
+				{
 					"name" : "hall_w",
 					"strict" : false
 				},
 				{
 					"name" : "hall_v",
-					"strict" : false
-				},
-				{
-					"name" : "hall_u",
 					"strict" : false
 				}
 			]

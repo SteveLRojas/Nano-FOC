@@ -135,7 +135,6 @@ def main():
     nano_write_reg(regs.R_SOURCE_CTRL, 0x0001)      #phi_source = 2'b01 (ol_phi), vd_vq_source = 1'b0 (internal), vu_vv_vw_source = 1'b0 (internal)
     nano_write_reg(regs.R_PWM_STEP_SIZE, 0x0002)    #set PWM speed to 2 (30.5 KHz)
     nano_write_reg(regs.R_PWM_DEAD_TIME, 0x0001)    #set dead time to 1 (4 ns)
-    nano_write_reg(regs.R_HALL_OFFSET, 0x0000)        #set hall offset to 0
     nano_write_reg(regs.R_FLUX_TARGET, 3000)    #set flux target
     nano_write_reg(regs.R_FLUX_KP, 0x0100)      #set flux kp
     nano_write_reg(regs.R_FLUX_KI, 0x0020)      #set flux ki
@@ -151,18 +150,18 @@ def main():
     nano_write_reg(regs.R_OL_TARGET_VELOCITY, 0x0100)    #ol_target_velocity
     time.sleep(3)
 
-    #setup RTMI again
+    #setup RTMI again for the ol_phi and hall_sector
     rtmi_responses[0].queue.clear()
     rtmi_responses[1].queue.clear()
-    int_out_div = 9
-    int_out_mode = 0
+    int_out_div = 5 #sample_rate = pwm_freq / (int_out_div + 1)
+    int_out_mode = 0    #1 for pulse mode, 0 for toggle
     int_out_pol = 1 #1 to trigger at start of calculation, 0 to start at the end
     int_out_en = 1
     int_out_ctrl = int_out_div | (int_out_mode << 10) | (int_out_pol << 11) | (int_out_en << 12)
     nano_write_reg(regs.R_INT_OUT_CTRL, int_out_ctrl)
-    nano_write_reg(regs.FR_RTMI_CHANNEL_0, regs.R_OL_PHI)  #RTMI channel 0 set to ol_phi
-    nano_write_reg(regs.FR_RTMI_CHANNEL_1, regs.R_EXPOL_PHI)  #RTMI channel 1 set to extpol_phi
-    nano_configure_rtmi(6, 0, 2, 0, 1, 256, 0)  #unconditional, ch0, 2 channels, not continuous, triggered, 256 samples, 0 threshold
+    nano_write_reg(regs.FR_RTMI_CHANNEL_0, regs.R_OL_PHI)
+    nano_write_reg(regs.FR_RTMI_CHANNEL_1, regs.R_HALL_SECTOR)
+    nano_configure_rtmi(6, 0, 2, 0, 1, 1024, 0)  #unconditional, ch0, 2 channels, not continuous, triggered, 256 samples, 0 threshold
 
     #collect RTMI responses
     for t in range(20):
@@ -171,18 +170,41 @@ def main():
 
     print(f"Captured {rtmi_responses[0].qsize()} samples.")
 
-    #compute offset
-    rtmi_num_samples = rtmi_responses[0].qsize()
-    phi_dif_avg = 0;
-    for idx in range(rtmi_num_samples):
-        sext_dif = rtmi_responses[0].queue[idx] - rtmi_responses[1].queue[idx]
-        sext_dif = (sext_dif & 0x1FFF) - (sext_dif & 0x2000)
-        phi_dif_avg = phi_dif_avg + sext_dif
-    phi_dif_avg = round(phi_dif_avg / rtmi_num_samples)
-    print(f"Hall offset: {phi_dif_avg}")
+    #compute sector boundary positions
+    rtmi_num_samples = min(rtmi_responses[0].qsize(), rtmi_responses[1].qsize())
+    hall_sector_accum = [0, 0, 0, 0, 0, 0]
+    hall_sector_count = [0, 0, 0, 0, 0, 0]
+    hall_sector_pb = [0, 0, 0, 0, 0, 0]
 
-    #apply the offset
-    nano_write_reg(regs.R_HALL_OFFSET, phi_dif_avg & 0xFFFF)
+    current_sector = rtmi_responses[1].queue[0]
+    prev_sector = current_sector
+    #HINT: need to compute and sign extend a delta_phi to handle wrap-around correctly
+    for idx in range(rtmi_num_samples):
+        current_sector = rtmi_responses[1].queue[idx]
+        if current_sector != prev_sector:
+            current_phi = rtmi_responses[0].queue[idx]
+            prev_phi = hall_sector_pb[current_sector]
+            delta_phi = current_phi - prev_phi
+            delta_phi = (delta_phi & 0x1FFF) - (delta_phi & 0x2000)
+            current_phi = prev_phi + delta_phi
+            hall_sector_pb[current_sector] = current_phi
+            hall_sector_accum[current_sector] += current_phi
+            hall_sector_count[current_sector] += 1
+        prev_sector = current_sector
+
+    for idx in range(6):
+        hall_sector_accum[idx] = round(hall_sector_accum[idx] / hall_sector_count[idx]) & 0x3FFF
+
+    print(f"Sector 5-0 boundary: {hall_sector_accum[0]}")
+    print(f"Sector 0-1 boundary: {hall_sector_accum[1]}")
+    print(f"Sector 1-2 boundary: {hall_sector_accum[2]}")
+    print(f"Sector 2-3 boundary: {hall_sector_accum[3]}")
+    print(f"Sector 3-4 boundary: {hall_sector_accum[4]}")
+    print(f"Sector 4-5 boundary: {hall_sector_accum[5]}")
+
+    #write boundary positions
+    for idx in range(6):
+        nano_write_reg(regs.R_HALL_PHI_S0 + idx, hall_sector_accum[idx])
 
     #switch to torque mode
     nano_write_reg(regs.R_FLUX_TARGET, 0x0000)    #set flux target

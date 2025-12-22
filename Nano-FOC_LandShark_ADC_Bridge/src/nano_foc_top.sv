@@ -179,7 +179,12 @@ module nano_foc_top
 	wire[2:0] hall_sector;
 	wire[13:0] hall_phi;
 	wire[13:0] extpol_phi;
-	wire[13:0] hall_offset;
+	wire[13:0] hall_phi_s0;
+	wire[13:0] hall_phi_s1;
+	wire[13:0] hall_phi_s2;
+	wire[13:0] hall_phi_s3;
+	wire[13:0] hall_phi_s4;
+	wire[13:0] hall_phi_s5;
 	
 	// Phi control block
 	wire[9:0] ol_acceleration;
@@ -331,14 +336,19 @@ module nano_foc_top
 		.rst(rst),
 		.enable(hall_ri_en),
 		.wren(ri_wren),
-		.addr(ri_addr[1:0]),
+		.addr(ri_addr[3:0]),
 		.to_ri(to_ri),
 		.from_ri(from_hall_ri),
 		
 		.hall_sector(hall_sector),
 		.hall_phi(hall_phi),
 		.extpol_phi(extpol_phi),
-		.hall_offset(hall_offset)
+		.hall_phi_s0(hall_phi_s0),
+		.hall_phi_s1(hall_phi_s1),
+		.hall_phi_s2(hall_phi_s2),
+		.hall_phi_s3(hall_phi_s3),
+		.hall_phi_s4(hall_phi_s4),
+		.hall_phi_s5(hall_phi_s5)
 	);
 	
 	phicon_ri phicon_ri_i(
@@ -454,17 +464,20 @@ module nano_foc_top
 //#############################################################################
 
 //####### Hall Decoder ########################################################
-	wire[13:0] hall_phi_raw;
-	assign hall_phi = hall_phi_raw + hall_offset;
-	
 	hall_decoder hall_decoder_i(
 		.clk(clk_25),
 		.rst(rst),
 		.hall_u(hall_u_d),
 		.hall_v(hall_v_d),
 		.hall_w(hall_w_d),
+		.hall_phi_s0(hall_phi_s0),
+		.hall_phi_s1(hall_phi_s1),
+		.hall_phi_s2(hall_phi_s2),
+		.hall_phi_s3(hall_phi_s3),
+		.hall_phi_s4(hall_phi_s4),
+		.hall_phi_s5(hall_phi_s5),
 		.hall_sector(hall_sector),
-		.hall_phi(hall_phi_raw),
+		.hall_phi(hall_phi),
 		.hall_step(),
 		.hall_dir(),
 		.fault(hall_fault)

@@ -64,6 +64,14 @@ def nano_process_rtmi_responses():
         else:
             rtmi_responses[channel_id].put(value)
 
+def nano_force_ol_velocity_zero():
+    #TODO: this seems to not work...
+    acceleration = 0x3FFF
+    nano_write_reg(regs.R_OL_TARGET_VELOCITY, 0x0000)
+    for idx in range(13):
+        nano_write_reg(regs.R_OL_ACCELERATION, acceleration)
+        acceleration = acceleration >> 1
+
 def main():
     if(debug):
         print("debug enabled")
@@ -75,6 +83,8 @@ def main():
     ser.timeout = 1.0
     ser.write_timeout = 1.0
     ser.open()
+    nano_write_reg(regs.R_INT_OUT_CTRL, 0x0000)
+    nano_write_reg(regs.FR_RTMI_CONTROL, 0x0000)
     time.sleep(0.5)
     ser.reset_input_buffer()
 
@@ -121,6 +131,7 @@ def main():
     print(f"i_w after offset: 0x{nano_read_reg(regs.R_I_W_KCL):04X}") #read_i_w_kcl
 
     #spin the motor
+    nano_force_ol_velocity_zero()
     nano_write_reg(regs.R_SOURCE_CTRL, 0x0001)    #phi_source = 2'b01 (ol_phi), vd_vq_source = 1'b0 (internal), vu_vv_vw_source = 1'b0 (internal)
     nano_write_reg(regs.R_PWM_STEP_SIZE, 0x0002)    #set PWM speed to 2 (30.5 KHz)
     nano_write_reg(regs.R_PWM_DEAD_TIME, 0x0001)    #set dead time to 1 (4 ns)
@@ -149,7 +160,7 @@ def main():
     int_out_ctrl = int_out_div | (int_out_mode << 10) | (int_out_pol << 11) | (int_out_en << 12)
     nano_write_reg(regs.R_INT_OUT_CTRL, int_out_ctrl)
     nano_write_reg(regs.FR_RTMI_CHANNEL_0, regs.R_OL_PHI)  #RTMI channel 0 set to ol_phi
-    nano_write_reg(regs.FR_RTMI_CHANNEL_1, regs.R_EXPOL_PHI)  #RTMI channel 1 set to extpol_phi
+    nano_write_reg(regs.FR_RTMI_CHANNEL_1, regs.R_EXTPOL_PHI)  #RTMI channel 1 set to extpol_phi
     nano_configure_rtmi(6, 0, 2, 0, 1, 2048, 0)  #unconditional, ch0, 2 channels, not continuous, triggered, 2048 samples, 0 threshold
 
     #collect RTMI responses

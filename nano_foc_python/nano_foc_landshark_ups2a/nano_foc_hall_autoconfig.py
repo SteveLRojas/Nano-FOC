@@ -64,6 +64,13 @@ def nano_process_rtmi_responses():
         else:
             rtmi_responses[channel_id].put(value)
 
+def nano_force_ol_velocity_zero():
+    acceleration = 0x3FFF
+    nano_write_reg(regs.R_OL_TARGET_VELOCITY, 0x0000)
+    for idx in range(13):
+        nano_write_reg(regs.R_OL_ACCELERATION, acceleration)
+        acceleration = acceleration >> 1
+
 def main():
     if(debug):
         print("debug enabled")
@@ -75,6 +82,8 @@ def main():
     ser.timeout = 1.0
     ser.write_timeout = 1.0
     ser.open()
+    nano_write_reg(regs.R_INT_OUT_CTRL, 0x0000)
+    nano_write_reg(regs.FR_RTMI_CONTROL, 0x0000)
     time.sleep(0.5)
     ser.reset_input_buffer()
 
@@ -83,7 +92,12 @@ def main():
     time.sleep(0.1)
 
     #setup RTMI. It is important to set the trigger to be the start of the calculation, because the calculation never ends while the power stage is off
-    nano_write_reg(regs.R_INT_OUT_CTRL, 0x1809)    #enable interrupt output, at start of calculation, toggle mode, PWM freq / 10
+    int_out_div = 9 #sample_rate = pwm_freq / (int_out_div + 1)
+    int_out_mode = 0    #1 for pulse mode, 0 for toggle
+    int_out_pol = 1 #1 to trigger at start of calculation, 0 to start at the end
+    int_out_en = 1
+    int_out_ctrl = int_out_div | (int_out_mode << 10) | (int_out_pol << 11) | (int_out_en << 12)
+    nano_write_reg(regs.R_INT_OUT_CTRL, int_out_ctrl)
     nano_write_reg(regs.FR_RTMI_CHANNEL_0, regs.R_I_U_RAW)  #RTMI channel 0 set to i_u_raw
     nano_write_reg(regs.FR_RTMI_CHANNEL_1, regs.R_I_W_RAW)  #RTMI channel 1 set to i_w_raw
     time.sleep(0.1)
@@ -121,11 +135,11 @@ def main():
     print(f"i_w after offset: 0x{nano_read_reg(regs.R_I_W_KCL):04X}") #read_i_w_kcl
 
     #spin the motor
+    nano_force_ol_velocity_zero()
     nano_write_reg(regs.R_SOURCE_CTRL, 0x0001)      #phi_source = 2'b01 (ol_phi), vd_vq_source = 1'b0 (internal), vu_vv_vw_source = 1'b0 (internal)
     nano_write_reg(regs.R_PWM_STEP_SIZE, 0x0002)    #set PWM speed to 2 (30.5 KHz)
     nano_write_reg(regs.R_PWM_DEAD_TIME, 0x0001)    #set dead time to 1 (4 ns)
-    nano_write_reg(regs.R_HALL_OFFSET, 0x0000)        #set hall offset to 0
-    nano_write_reg(regs.R_FLUX_TARGET, 2000)    #set flux target
+    nano_write_reg(regs.R_FLUX_TARGET, 3000)    #set flux target
     nano_write_reg(regs.R_FLUX_KP, 0x0100)      #set flux kp
     nano_write_reg(regs.R_FLUX_KI, 0x0020)      #set flux ki
     nano_write_reg(regs.R_FLUX_KD, 0x0000)      #set flux kd
@@ -140,13 +154,18 @@ def main():
     nano_write_reg(regs.R_OL_TARGET_VELOCITY, 0x0100)    #ol_target_velocity
     time.sleep(3)
 
-    #setup RTMI again
+    #setup RTMI again for the ol_phi and hall_sector
     rtmi_responses[0].queue.clear()
     rtmi_responses[1].queue.clear()
-    nano_write_reg(regs.R_INT_OUT_CTRL, 0x1009)    #enable interrupt output, toggle mode, at end of calculation, PWM freq / 10
-    nano_write_reg(regs.FR_RTMI_CHANNEL_0, regs.R_OL_PHI)  #RTMI channel 0 set to ol_phi
-    nano_write_reg(regs.FR_RTMI_CHANNEL_1, regs.R_EXPOL_PHI)  #RTMI channel 1 set to extpol_phi
-    nano_configure_rtmi(6, 0, 2, 0, 1, 256, 0)  #unconditional, ch0, 2 channels, not continuous, triggered, 256 samples, 0 threshold
+    int_out_div = 5 #sample_rate = pwm_freq / (int_out_div + 1)
+    int_out_mode = 0    #1 for pulse mode, 0 for toggle
+    int_out_pol = 1 #1 to trigger at start of calculation, 0 to start at the end
+    int_out_en = 1
+    int_out_ctrl = int_out_div | (int_out_mode << 10) | (int_out_pol << 11) | (int_out_en << 12)
+    nano_write_reg(regs.R_INT_OUT_CTRL, int_out_ctrl)
+    nano_write_reg(regs.FR_RTMI_CHANNEL_0, regs.R_OL_PHI)
+    nano_write_reg(regs.FR_RTMI_CHANNEL_1, regs.R_HALL_SECTOR)
+    nano_configure_rtmi(6, 0, 2, 0, 1, 1024, 0)  #unconditional, ch0, 2 channels, not continuous, triggered, 256 samples, 0 threshold
 
     #collect RTMI responses
     for t in range(20):
@@ -155,23 +174,57 @@ def main():
 
     print(f"Captured {rtmi_responses[0].qsize()} samples.")
 
-    #compute offset
-    rtmi_num_samples = rtmi_responses[0].qsize()
-    phi_dif_avg = 0;
+    norm_ol_phi = [element / 16384 for element in list(rtmi_responses[0].queue)]
+    norm_hall_sector = [element / 6 for element in list(rtmi_responses[1].queue)]
+
+    #plot RTMI responses
+    plt.plot(norm_ol_phi, label='NORM_OL_PHI')
+    plt.plot(norm_hall_sector, label='NORM_HALL_SECTOR')
+    plt.legend()
+    plt.show()
+
+    #compute sector boundary positions
+    rtmi_num_samples = min(rtmi_responses[0].qsize(), rtmi_responses[1].qsize())
+    hall_sector_accum = [0, 0, 0, 0, 0, 0]
+    hall_sector_count = [0, 0, 0, 0, 0, 0]
+    hall_sector_pb = [0, 0, 0, 0, 0, 0]
+
+    current_sector = rtmi_responses[1].queue[0]
+    prev_sector = current_sector
+    #HINT: need to compute and sign extend a delta_phi to handle wrap-around correctly
     for idx in range(rtmi_num_samples):
-        sext_dif = rtmi_responses[0].queue[idx] - rtmi_responses[1].queue[idx]
-        sext_dif = (sext_dif & 0x1FFF) - (sext_dif & 0x2000)
-        phi_dif_avg = phi_dif_avg + sext_dif
-    phi_dif_avg = round(phi_dif_avg / rtmi_num_samples)
-    print(f"Hall offset: {phi_dif_avg}")
+        current_sector = rtmi_responses[1].queue[idx]
+        if current_sector != prev_sector:
+            current_phi = rtmi_responses[0].queue[idx]
+            prev_phi = hall_sector_pb[current_sector]
+            delta_phi = current_phi - prev_phi
+            delta_phi = (delta_phi & 0x1FFF) - (delta_phi & 0x2000)
+            current_phi = prev_phi + delta_phi
+            hall_sector_pb[current_sector] = current_phi
+            hall_sector_accum[current_sector] += current_phi
+            hall_sector_count[current_sector] += 1
+        prev_sector = current_sector
 
-    #apply the offset
-    nano_write_reg(regs.R_HALL_OFFSET, phi_dif_avg)
+    for idx in range(6):
+        hall_sector_accum[idx] = round(hall_sector_accum[idx] / hall_sector_count[idx]) & 0x3FFF
 
-    #setup RTMI again
+    print(f"Sector 5-0 boundary: {hall_sector_accum[0]}")
+    print(f"Sector 0-1 boundary: {hall_sector_accum[1]}")
+    print(f"Sector 1-2 boundary: {hall_sector_accum[2]}")
+    print(f"Sector 2-3 boundary: {hall_sector_accum[3]}")
+    print(f"Sector 3-4 boundary: {hall_sector_accum[4]}")
+    print(f"Sector 4-5 boundary: {hall_sector_accum[5]}")
+
+    #write boundary positions
+    for idx in range(6):
+        nano_write_reg(regs.R_HALL_PHI_S0 + idx, hall_sector_accum[idx])
+
+    #setup RTMI again for ol_phi and hall_phi
     rtmi_responses[0].queue.clear()
     rtmi_responses[1].queue.clear()
-    nano_configure_rtmi(6, 0, 2, 0, 1, 256, 0)  #unconditional, ch0, 2 channels, not continuous, triggered, 256 samples, 0 threshold
+    nano_write_reg(regs.FR_RTMI_CHANNEL_0, regs.R_OL_PHI)
+    nano_write_reg(regs.FR_RTMI_CHANNEL_1, regs.R_HALL_PHI)
+    nano_configure_rtmi(6, 0, 2, 0, 1, 1024, 0)  #unconditional, ch0, 2 channels, not continuous, triggered, 256 samples, 0 threshold
 
     #collect RTMI responses
     for t in range(20):
@@ -180,17 +233,117 @@ def main():
 
     print(f"Captured {rtmi_responses[0].qsize()} samples.")
 
-    nano_write_reg(regs.R_OL_TARGET_VELOCITY, 0x0000)    #set target velocity to 0
-    nano_write_reg(regs.R_STATUS, 0x0000)    #power stage off
+    #plot RTMI responses
+    plt.plot(np.array(rtmi_responses[0].queue), label='OL_PHI')
+    plt.plot(np.array(rtmi_responses[1].queue), label='HALL_PHI')
+    plt.legend()
+    plt.show()
 
-    print("Done!")
-    ser.close()
+    #spin the motor in reverse
+    nano_write_reg(regs.R_OL_TARGET_VELOCITY, -256 & 0xFFFF)
+    time.sleep(8)
+
+    #setup RTMI again for the ol_phi and hall_sector
+    rtmi_responses[0].queue.clear()
+    rtmi_responses[1].queue.clear()
+    int_out_div = 5 #sample_rate = pwm_freq / (int_out_div + 1)
+    int_out_mode = 0    #1 for pulse mode, 0 for toggle
+    int_out_pol = 1 #1 to trigger at start of calculation, 0 to start at the end
+    int_out_en = 1
+    int_out_ctrl = int_out_div | (int_out_mode << 10) | (int_out_pol << 11) | (int_out_en << 12)
+    nano_write_reg(regs.R_INT_OUT_CTRL, int_out_ctrl)
+    nano_write_reg(regs.FR_RTMI_CHANNEL_0, regs.R_OL_PHI)
+    nano_write_reg(regs.FR_RTMI_CHANNEL_1, regs.R_HALL_SECTOR)
+    nano_configure_rtmi(6, 0, 2, 0, 1, 1024, 0)  #unconditional, ch0, 2 channels, not continuous, triggered, 256 samples, 0 threshold
+
+    #collect RTMI responses
+    for t in range(20):
+        time.sleep(0.1)
+        nano_process_rtmi_responses()
+
+    print(f"Captured {rtmi_responses[0].qsize()} samples.")
+
+    #compute sector boundary positions
+    rtmi_num_samples = min(rtmi_responses[0].qsize(), rtmi_responses[1].qsize())
+    hall_sector_accum = [0, 0, 0, 0, 0, 0]
+    hall_sector_count = [0, 0, 0, 0, 0, 0]
+    hall_sector_pb = [0, 0, 0, 0, 0, 0]
+
+    current_sector = rtmi_responses[1].queue[0]
+    prev_sector = current_sector
+    #HINT: need to compute and sign extend a delta_phi to handle wrap-around correctly
+    for idx in range(rtmi_num_samples):
+        current_sector = rtmi_responses[1].queue[idx]
+        if current_sector != prev_sector:
+            current_phi = rtmi_responses[0].queue[idx]
+            prev_phi = hall_sector_pb[current_sector]
+            delta_phi = current_phi - prev_phi
+            delta_phi = (delta_phi & 0x1FFF) - (delta_phi & 0x2000)
+            current_phi = prev_phi + delta_phi
+            hall_sector_pb[current_sector] = current_phi
+            hall_sector_accum[current_sector] += current_phi
+            hall_sector_count[current_sector] += 1
+        prev_sector = current_sector
+
+    for idx in range(6):
+        hall_sector_accum[idx] = round(hall_sector_accum[idx] / hall_sector_count[idx]) & 0x3FFF
+
+    print(f"Sector 1-0 boundary: {hall_sector_accum[0]}")
+    print(f"Sector 2-1 boundary: {hall_sector_accum[1]}")
+    print(f"Sector 3-2 boundary: {hall_sector_accum[2]}")
+    print(f"Sector 4-3 boundary: {hall_sector_accum[3]}")
+    print(f"Sector 5-4 boundary: {hall_sector_accum[4]}")
+    print(f"Sector 0-5 boundary: {hall_sector_accum[5]}")
+
+    #write boundary positions
+    for idx in range(6):
+        nano_write_reg(regs.R_HALL_PHI_S0 + idx, hall_sector_accum[idx])
+
+    #setup RTMI again for ol_phi and hall_phi
+    rtmi_responses[0].queue.clear()
+    rtmi_responses[1].queue.clear()
+    nano_write_reg(regs.FR_RTMI_CHANNEL_0, regs.R_OL_PHI)
+    nano_write_reg(regs.FR_RTMI_CHANNEL_1, regs.R_HALL_PHI)
+    nano_configure_rtmi(6, 0, 2, 0, 1, 1024, 0)  #unconditional, ch0, 2 channels, not continuous, triggered, 256 samples, 0 threshold
+
+    #collect RTMI responses
+    for t in range(20):
+        time.sleep(0.1)
+        nano_process_rtmi_responses()
+
+    print(f"Captured {rtmi_responses[0].qsize()} samples.")
+
+    #plot RTMI responses
+    plt.plot(np.array(rtmi_responses[0].queue), label='OL_PHI')
+    plt.plot(np.array(rtmi_responses[1].queue), label='HALL_PHI')
+    plt.legend()
+    plt.show()
+
+    #setup RTMI again for ol_phi and extpol_phi
+    rtmi_responses[0].queue.clear()
+    rtmi_responses[1].queue.clear()
+    nano_write_reg(regs.FR_RTMI_CHANNEL_0, regs.R_OL_PHI)
+    nano_write_reg(regs.FR_RTMI_CHANNEL_1, regs.R_EXTPOL_PHI)
+    nano_configure_rtmi(6, 0, 2, 0, 1, 1024, 0)  #unconditional, ch0, 2 channels, not continuous, triggered, 256 samples, 0 threshold
+
+    #collect RTMI responses
+    for t in range(20):
+        time.sleep(0.1)
+        nano_process_rtmi_responses()
+
+    print(f"Captured {rtmi_responses[0].qsize()} samples.")
 
     #plot RTMI responses
     plt.plot(np.array(rtmi_responses[0].queue), label='OL_PHI')
     plt.plot(np.array(rtmi_responses[1].queue), label='EXTPOL_PHI')
     plt.legend()
     plt.show()
+
+    nano_write_reg(regs.R_OL_TARGET_VELOCITY, 0x0000)    #set target velocity to 0
+    nano_write_reg(regs.R_STATUS, 0x0000)    #power stage off
+
+    print("Done!")
+    ser.close()
 
     #check RTMI responses
     if(debug):
