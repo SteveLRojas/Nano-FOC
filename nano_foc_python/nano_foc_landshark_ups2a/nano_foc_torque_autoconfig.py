@@ -72,10 +72,7 @@ def nano_force_ol_velocity_zero():
         nano_write_reg(regs.R_OL_ACCELERATION, acceleration)
         acceleration = acceleration >> 1
 
-def main():
-    if(debug):
-        print("debug enabled")
-
+def nano_init():
     ser.baudrate = baud
     ser.port = port
     ser.dsrdtr = False
@@ -87,6 +84,17 @@ def main():
     nano_write_reg(regs.FR_RTMI_CONTROL, 0x0000)
     time.sleep(0.5)
     ser.reset_input_buffer()
+
+def nano_stop():
+    nano_write_reg(regs.R_OL_TARGET_VELOCITY, 0x0000)    #set target velocity to 0
+    nano_write_reg(regs.R_TORQUE_TARGET, 0x0000)    #set torque target to 0
+    nano_write_reg(regs.R_STATUS, 0x0000)    #power stage off
+
+def main():
+    if(debug):
+        print("debug enabled")
+
+    nano_init()
 
     #Turn off power stage to make sure there is no current
     nano_write_reg(regs.R_STATUS, 0x0000)    #power stage off
@@ -208,9 +216,12 @@ def main():
 
     #switch to torque mode
     nano_write_reg(regs.R_FLUX_TARGET, 0x0000)    #set flux target
-    nano_write_reg(regs.R_SOURCE_CTRL, 0x0003)    #phi_source = 2'b11 (extpol_phi), vd_vq_source = 1'b0 (internal), vu_vv_vw_source = 1'b0 (internal)
-    nano_write_reg(regs.R_TORQUE_TARGET, 1500)    #set torque target
+    nano_write_reg(regs.R_STATUS, 0x0000)    #power stage off
     nano_write_reg(regs.R_OL_TARGET_VELOCITY, 0x0000)    #set ol target velocity to 0
+    nano_write_reg(regs.R_SOURCE_CTRL, 0x0003)    #phi_source = 2'b11 (extpol_phi), vd_vq_source = 1'b0 (internal), vu_vv_vw_source = 1'b0 (internal)
+    time.sleep(0.1)
+    nano_write_reg(regs.R_STATUS, 0x0008)    #power stage on
+    nano_write_reg(regs.R_TORQUE_TARGET, 1500)    #set torque target
 
     #setup RTMI again
     rtmi_responses[0].queue.clear()
@@ -234,9 +245,7 @@ def main():
 
     if(power_off):
         time.sleep(3)
-        nano_write_reg(regs.R_OL_TARGET_VELOCITY, 0x0000)    #set target velocity to 0
-        nano_write_reg(regs.R_TORQUE_TARGET, 0x0000)    #set torque target to 0
-        nano_write_reg(regs.R_STATUS, 0x0000)    #power stage off
+        nano_stop()
 
     print("Done!")
     ser.close()

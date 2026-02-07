@@ -72,10 +72,7 @@ def nano_force_ol_velocity_zero():
         nano_write_reg(regs.R_OL_ACCELERATION, acceleration)
         acceleration = acceleration >> 1
 
-def main():
-    if(debug):
-        print("debug enabled")
-
+def nano_init():
     ser.baudrate = baud
     ser.port = port
     ser.dsrdtr = False
@@ -87,6 +84,17 @@ def main():
     nano_write_reg(regs.FR_RTMI_CONTROL, 0x0000)
     time.sleep(0.5)
     ser.reset_input_buffer()
+
+def nano_stop():
+    nano_write_reg(regs.R_OL_TARGET_VELOCITY, 0x0000)    #set target velocity to 0
+    nano_write_reg(regs.R_TORQUE_TARGET, 0x0000)    #set torque target to 0
+    nano_write_reg(regs.R_STATUS, 0x0000)    #power stage off
+
+def main():
+    if(debug):
+        print("debug enabled")
+
+    nano_init()
 
     status = nano_read_reg(regs.R_STATUS)
     print(f"status: 0x{status:04X}")
@@ -103,6 +111,13 @@ def main():
     print(f"\ti_park_done: {bool(status & 0x0400)}")
     print(f"\ti_clarke_done: {bool(status & 0x0800)}")
     print(f"\tbutton_d: 0x{(status >> 12):01X}")
+
+    if(power_off):
+        time.sleep(3)
+        nano_stop()
+
+    print("Done!")
+    ser.close()
 
 if __name__ == "__main__":
     main()
