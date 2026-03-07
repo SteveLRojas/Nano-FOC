@@ -13,7 +13,7 @@ module phicon_ri(
 		input wire ol_target_reached,
 		input wire[13:0] ol_phi,
 		output reg[13:0] ext_phi,
-		input wire[13:0] selected_phi
+		input wire[13:0] extpol_phi
 	);
 
 	always @(posedge clk or posedge rst)
@@ -34,7 +34,7 @@ module phicon_ri(
 				3'h2: from_ri <= {3'h0, ol_target_reached, ol_actual_velocity};
 				3'h3: from_ri <= {2'h0, ol_phi};
 				3'h4: from_ri <= {2'h0, ext_phi};
-				3'h5: from_ri <= {2'h0, selected_phi};
+				3'h5: from_ri <= {2'h0, extpol_phi};
 				default: from_ri <= 16'h0000;
 			endcase
 			

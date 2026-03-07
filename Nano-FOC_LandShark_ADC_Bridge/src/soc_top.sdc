@@ -23,7 +23,7 @@ set_output_delay -clock sck_clock -clock_fall -max 2.0 [get_ports spi_miso]
 set_output_delay -clock sck_clock -clock_fall -min -0.5 [get_ports spi_miso]
 
 set_false_path -from * -to [get_ports {led* pwm_* int_out}]
-set_false_path -from [get_ports {button_n* hall_*}] -to *
+set_false_path -from [get_ports {button_n* hall_* abz_*}] -to *
 
 # board delay + Tco(max) of external devices (ADC)
 set_input_delay -clock adc_clk_u -max 12.0 [get_ports adc_miso_u]

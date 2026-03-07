@@ -25,6 +25,10 @@ module nano_foc_top
 		input wire hall_v,
 		input wire hall_w,
 		
+		input wire abz_a,
+		input wire abz_b,
+		input wire abz_z,
+		
 		input wire spi_sck,
 		input wire spi_ncs,
 		input wire spi_mosi,
@@ -32,7 +36,6 @@ module nano_foc_top
 	);
 // rpm = 60 * target_velocity * 25e6 / (2^21 * 2^5 * npp)
 // target_velocity = rpm * 2^21 * 2^5 * npp / (60 * 25e6)
-// PID settings for 42BLF02: Kp = 16'h0200, Ki = 16'h0020, Kd = 16'h0000
 // PID shift factors: Kp >> 10, Ki >> 14, Kd >> 10
 
 //Address map for RI:
@@ -62,6 +65,9 @@ module nano_foc_top
 	wire hall_u_d;
 	wire hall_v_d;
 	wire hall_w_d;
+	wire abz_a_d;
+	wire abz_b_d;
+	wire abz_z_d;
 	
 	button_debounce
 	#(
@@ -88,6 +94,19 @@ module nano_foc_top
 		.rst(rst),
 		.debounce_in({hall_w, hall_v, hall_u}),
 		.debounce_out({hall_w_d, hall_v_d, hall_u_d})
+	);
+	
+	debouncer
+	#(
+		.ENABLE_SYNC(1'b1),
+		.NUM_CHANNELS(3),
+		.TIMER_BITS(3)
+	) debouncer_abz
+	(
+		.clk(clk_25),
+		.rst(rst),
+		.debounce_in({abz_z, abz_b, abz_a}),
+		.debounce_out({abz_z_d, abz_b_d, abz_a_d})
 	);
 	
 	reg rst_250;	//needed for recovery timing reasons
@@ -162,7 +181,7 @@ module nano_foc_top
 	wire inverse_clarke_done;
 
 	//system control block
-	wire[1:0] phi_source;
+	wire[2:0] phi_source;
 	wire vd_vq_source;
 	wire vu_vv_vw_source;
 	wire[9:0] pwm_step_size_25;
@@ -175,16 +194,24 @@ module nano_foc_top
 	wire int_out_pol;
 	wire int_out_en;
 	
-	// Hall block
+	// Enc block
+	reg[13:0] enc_phi;
+	wire[13:0] enc_offset;
 	wire[2:0] hall_sector;
 	wire[13:0] hall_phi;
-	wire[13:0] extpol_phi;
 	wire[13:0] hall_phi_s0;
 	wire[13:0] hall_phi_s1;
 	wire[13:0] hall_phi_s2;
 	wire[13:0] hall_phi_s3;
 	wire[13:0] hall_phi_s4;
 	wire[13:0] hall_phi_s5;
+	wire[13:0] abz_phi;
+	wire abz_clear_en;
+	wire abz_combined_z_pulse;
+	wire abz_inv_dir;
+	wire[23:0] abz_cpr_inv;
+	wire[13:0] abz_max_count;
+	wire abz_max_count_wren;
 	
 	// Phi control block
 	wire[9:0] ol_acceleration;
@@ -193,7 +220,7 @@ module nano_foc_top
 	wire ol_target_reached;
 	wire[13:0] ol_phi;
 	wire[13:0] ext_phi;
-	wire[13:0] selected_phi;
+	wire[13:0] extpol_phi;
 	
 	//ADC monitor block
 	wire signed[13:0] i_x1;	//i_u_raw
@@ -289,13 +316,13 @@ module nano_foc_top
 	end
 	
 	wire syscon_ri_en;
-	wire hall_ri_en;
+	wire enc_ri_en;
 	wire phicon_ri_en;
 	wire adc_ri_en;
 	wire foc_ri_en;
 	
 	wire[15:0] from_syscon_ri;
-	wire[15:0] from_hall_ri;
+	wire[15:0] from_enc_ri;
 	wire[15:0] from_phicon_ri;
 	wire[15:0] from_adc_ri;
 	wire[15:0] from_foc_ri;
@@ -303,7 +330,7 @@ module nano_foc_top
 	//Address Decoding
 	assign status_ri_en = (ri_addr[6:4] == 3'h0);
 	assign syscon_ri_en = (ri_addr[6:4] == 3'h1);
-	assign hall_ri_en   = (ri_addr[6:4] == 3'h2);
+	assign enc_ri_en    = (ri_addr[6:4] == 3'h2);
 	assign phicon_ri_en = (ri_addr[6:4] == 3'h3);
 	assign adc_ri_en    = (ri_addr[6:4] == 3'h4);
 	assign foc_ri_en    = (ri_addr[6:4] == 3'h5);
@@ -331,24 +358,32 @@ module nano_foc_top
 		.int_out_en(int_out_en)
 	);
 	
-	hall_ri hall_ri_i(
+	enc_ri enc_ri_i(
 		.clk(clk_25),
 		.rst(rst),
-		.enable(hall_ri_en),
+		.enable(enc_ri_en),
 		.wren(ri_wren),
 		.addr(ri_addr[3:0]),
 		.to_ri(to_ri),
-		.from_ri(from_hall_ri),
+		.from_ri(from_enc_ri),
 		
+		.enc_phi(enc_phi),
+		.enc_offset(enc_offset),
 		.hall_sector(hall_sector),
 		.hall_phi(hall_phi),
-		.extpol_phi(extpol_phi),
 		.hall_phi_s0(hall_phi_s0),
 		.hall_phi_s1(hall_phi_s1),
 		.hall_phi_s2(hall_phi_s2),
 		.hall_phi_s3(hall_phi_s3),
 		.hall_phi_s4(hall_phi_s4),
-		.hall_phi_s5(hall_phi_s5)
+		.hall_phi_s5(hall_phi_s5),
+		.abz_phi(abz_phi),
+		.abz_clear_en(abz_clear_en),
+		.abz_combined_z_pulse(abz_combined_z_pulse),
+		.abz_inv_dir(abz_inv_dir),
+		.abz_cpr_inv(abz_cpr_inv),
+		.abz_max_count(abz_max_count),
+		.abz_max_count_wren(abz_max_count_wren)
 	);
 	
 	phicon_ri phicon_ri_i(
@@ -366,7 +401,7 @@ module nano_foc_top
 		.ol_target_reached(ol_target_reached),
 		.ol_phi(ol_phi),
 		.ext_phi(ext_phi),
-		.selected_phi(selected_phi)
+		.extpol_phi(extpol_phi)
 	);
 	
 	adc_ri adc_ri_i(
@@ -416,14 +451,14 @@ module nano_foc_top
 	
 	reg status_ri_en_ff;
 	reg syscon_ri_en_ff;
-	reg hall_ri_en_ff;
+	reg enc_ri_en_ff;
 	reg phicon_ri_en_ff;
 	reg adc_ri_en_ff;
 	reg foc_ri_en_ff;
 	
 	wire[15:0] m_from_status_ri;
 	wire[15:0] m_from_syscon_ri;
-	wire[15:0] m_from_hall_ri;
+	wire[15:0] m_from_enc_ri;
 	wire[15:0] m_from_phicon_ri;
 	wire[15:0] m_from_adc_ri;
 	wire[15:0] m_from_foc_ri;
@@ -434,7 +469,7 @@ module nano_foc_top
 		begin
 			status_ri_en_ff <= 1'b0;
 			syscon_ri_en_ff <= 1'b0;
-			hall_ri_en_ff <= 1'b0;
+			enc_ri_en_ff <= 1'b0;
 			phicon_ri_en_ff <= 1'b0;
 			adc_ri_en_ff <= 1'b0;
 			foc_ri_en_ff <= 1'b0;
@@ -443,7 +478,7 @@ module nano_foc_top
 		begin
 			status_ri_en_ff <= status_ri_en;
 			syscon_ri_en_ff <= syscon_ri_en;
-			hall_ri_en_ff <= hall_ri_en;
+			enc_ri_en_ff <= enc_ri_en;
 			phicon_ri_en_ff <= phicon_ri_en;
 			adc_ri_en_ff <= adc_ri_en;
 			foc_ri_en_ff <= foc_ri_en;
@@ -452,12 +487,12 @@ module nano_foc_top
 	
 	assign m_from_status_ri = {16{status_ri_en_ff}} & from_status_ri;
 	assign m_from_syscon_ri = {16{syscon_ri_en_ff}} & from_syscon_ri;
-	assign m_from_hall_ri = {16{hall_ri_en_ff}} & from_hall_ri;
+	assign m_from_enc_ri = {16{enc_ri_en_ff}} & from_enc_ri;
 	assign m_from_phicon_ri = {16{phicon_ri_en_ff}} & from_phicon_ri;
 	assign m_from_adc_ri = {16{adc_ri_en_ff}} & from_adc_ri;
 	assign m_from_foc_ri = {16{foc_ri_en_ff}} & from_foc_ri;
 	
-	assign from_ri = m_from_status_ri | m_from_syscon_ri | m_from_hall_ri | m_from_phicon_ri | m_from_adc_ri | m_from_foc_ri;
+	assign from_ri = m_from_status_ri | m_from_syscon_ri | m_from_enc_ri | m_from_phicon_ri | m_from_adc_ri | m_from_foc_ri;
 	
 	assign led[3] = ol_target_reached;
 	assign led[2] = power_stage_en;
@@ -484,11 +519,63 @@ module nano_foc_top
 	);
 //#############################################################################
 
+//####### ABZ Decoder #########################################################
+	wire abz_step;
+	
+	abz_decoder
+	#(
+		.NUM_BITS(14)
+	) abz_decoder_i
+	(
+		.clk(clk_25),
+		.rst(rst),
+		.enc_a(abz_a_d),
+		.enc_b(abz_b_d),
+		.enc_z(abz_z_d),
+		.z_clear_en(abz_clear_en),
+		.combined_z_pulse(abz_combined_z_pulse),
+		.inv_dir(abz_inv_dir),
+		.max_count(abz_max_count),
+		.max_count_wren(abz_max_count_wren),
+		.abz_phi(abz_phi),
+		.abz_step(abz_step),
+		.abz_dir(),
+		.fault()	//TODO: report this somewhere
+    );
+//#############################################################################
+
+//####### Decoder Scaler ######################################################
+	wire[13:0] scaled_abz_phi;
+	
+	decoder_scaler
+	#(
+		.MUL_WIDTH(8),
+		.PHI_BITS(14)
+	) decoder_scaler_i
+	(
+		.clk(clk_25),
+		.rst(rst),
+		.trig(abz_step),
+		.cpr_inv(abz_cpr_inv),
+		.decoder_phi(abz_phi),
+		.scaled_phi(scaled_abz_phi),
+		.done()
+    );
+//#############################################################################
+
 //####### Phi Extrapolator ####################################################
+	always @(posedge clk_25 or posedge rst)
+	begin
+		if(rst)
+			enc_phi <= 14'h0000;
+		else
+			enc_phi <= (phi_source[0] ? scaled_abz_phi : hall_phi) + enc_offset;
+	end
+	
 	phi_extrapolator phi_extrapolator_i(
 		.clk(clk_25),
 		.rst(rst),
-		.phi_in(hall_phi),
+		.phi_in(enc_phi),
 		.phi_out(extpol_phi)
 	);
 //#############################################################################
@@ -605,10 +692,11 @@ module nano_foc_top
 //#############################################################################
 
 //####### Phi Selection, Sine and Cosine Calculation ##########################
+	wire[13:0] selected_phi;
 	wire signed[13:0] sin_phi;
 	wire signed[13:0] cos_phi;
 	
-	assign selected_phi = phi_source[1] ? (phi_source[0] ? extpol_phi : hall_phi) : (phi_source[0] ? ol_phi : ext_phi);
+	assign selected_phi = phi_source[2] ? (phi_source[1] ? extpol_phi : enc_phi) : (phi_source[1] ? ol_phi : ext_phi);
 	
 	sin_cos_lut sin_cos_lut_i(
 		.clk(clk_25),
@@ -622,7 +710,11 @@ module nano_foc_top
 //#############################################################################
 
 //####### Clarke Transformation ###############################################
-	balanced_clarke clarke_i(
+	balanced_clarke
+	#(
+		.NUM_BITS(14)
+	) clarke_i
+	(
 		.clk(clk_25),
 		.rst(rst),
 		.trig(current_calc_done),

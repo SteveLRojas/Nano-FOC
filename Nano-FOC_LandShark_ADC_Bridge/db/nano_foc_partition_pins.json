@@ -114,6 +114,18 @@
 				{
 					"name" : "hall_v",
 					"strict" : false
+				},
+				{
+					"name" : "abz_z",
+					"strict" : false
+				},
+				{
+					"name" : "abz_b",
+					"strict" : false
+				},
+				{
+					"name" : "abz_a",
+					"strict" : false
 				}
 			]
 		}
