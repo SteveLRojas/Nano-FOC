@@ -56,38 +56,30 @@ def main():
 	print(f"i_v after offset: 0x{nano.read_reg(nano.regs.R_I_V_KCL):04X}") #read_i_v_kcl
 	print(f"i_w after offset: 0x{nano.read_reg(nano.regs.R_I_W_KCL):04X}") #read_i_w_kcl
 
-	#minimal hall setup
-	nano.write_reg(nano.regs.R_HALL_PHI_S0, 0x0000)
-	nano.write_reg(nano.regs.R_HALL_PHI_S1, 0x0AAA)
-	nano.write_reg(nano.regs.R_HALL_PHI_S2, 0x1555)
-	nano.write_reg(nano.regs.R_HALL_PHI_S3, 0x2000)
-	nano.write_reg(nano.regs.R_HALL_PHI_S4, 0x2AAA)
-	nano.write_reg(nano.regs.R_HALL_PHI_S5, 0x3555)
-
-	#spin the motor
-	nano.force_ol_velocity_zero()
+	#move motor to position 0
+	nano.write_reg(nano.regs.R_EXT_PHI, 0)
 	vu_vv_vw_source = 0	#internal
 	vd_vq_source = 0	#internal
-	phi_source = 2	#ol_phi, hall_phi routed to extrapolator
+	phi_source = 0	#ext_phi
 	nano.write_reg(nano.regs.R_SOURCE_CTRL, (vu_vv_vw_source << 4) | (vd_vq_source << 3) | phi_source)
 	pwm_freq = 30000
 	step_size = round(pwm_freq * 2**14 / 250000000)
 	nano.write_reg(nano.regs.R_PWM_STEP_SIZE, step_size)
 	nano.write_reg(nano.regs.R_PWM_DEAD_TIME, 0x0001)    #set dead time to 1 (4 ns)
-	nano.write_reg(nano.regs.R_FLUX_TARGET, 3000)    #set flux target
-	nano.write_reg(nano.regs.R_FLUX_KP, 0x0100)    #set flux kp
-	nano.write_reg(nano.regs.R_FLUX_KI, 0x0020)    #set flux ki
-	nano.write_reg(nano.regs.R_FLUX_KD, 0x0000)    #set flux kd
-	nano.write_reg(nano.regs.R_TORQUE_TARGET, 0x0000)    #set torque target
-	nano.write_reg(nano.regs.R_TORQUE_KP, 0x0100)    #set torque kp
-	nano.write_reg(nano.regs.R_TORQUE_KI, 0x0020)    #set torque ki
-	nano.write_reg(nano.regs.R_TORQUE_KD, 0x0000)    #set torque kd
+	nano.write_reg(nano.regs.R_FLUX_TARGET, 3000)
+	nano.write_reg(nano.regs.R_FLUX_KP, 800)
+	nano.write_reg(nano.regs.R_FLUX_KI, 20)
+	nano.write_reg(nano.regs.R_FLUX_KD, 0)
+	nano.write_reg(nano.regs.R_TORQUE_TARGET, 0)
+	nano.write_reg(nano.regs.R_TORQUE_KP, 800)
+	nano.write_reg(nano.regs.R_TORQUE_KI, 20)
+	nano.write_reg(nano.regs.R_TORQUE_KD, 0)
 	nano.write_reg(nano.regs.R_STATUS, 0x0000)    #clear faults
 	nano.write_reg(nano.regs.R_STATUS, 0x0008)    #power stage on
 	time.sleep(0.25)
-	nano.write_reg(nano.regs.R_OL_ACCELERATION, 0x0002)    #ol_acceleration
-	nano.write_reg(nano.regs.R_OL_TARGET_VELOCITY, 0x0100)    #ol_target_velocity
-	time.sleep(1)
+
+	nano.write_reg(nano.regs.R_FLUX_TARGET, 0)
+	time.sleep(0.25)
 
 	#setup RTMI
 	nano.flush_rtmi()
@@ -97,9 +89,11 @@ def main():
 	int_out_en = 1
 	int_out_ctrl = int_out_div | (int_out_mode << 10) | (int_out_pol << 11) | (int_out_en << 12)
 	nano.write_reg(nano.regs.R_INT_OUT_CTRL, int_out_ctrl)
-	nano.write_reg(nano.regs.FR_RTMI_CHANNEL_0, nano.regs.R_OL_PHI)  #RTMI channel 0 set to ol_phi
-	nano.write_reg(nano.regs.FR_RTMI_CHANNEL_1, nano.regs.R_EXTPOL_PHI)  #RTMI channel 1 set to extpol_phi
+	nano.write_reg(nano.regs.FR_RTMI_CHANNEL_0, nano.regs.R_TORQUE)
+	nano.write_reg(nano.regs.FR_RTMI_CHANNEL_1, nano.regs.R_FLUX)
 	nano.configure_rtmi(6, 0, 2, 0, 1, 2048, 0)  #unconditional, ch0, 2 channels, not continuous, triggered, 2048 samples, 0 threshold
+
+	nano.write_reg(nano.regs.R_FLUX_TARGET, 3000)
 
 	#collect RTMI responses
 	for t in range(20):
@@ -108,15 +102,20 @@ def main():
 
 	print(f"Captured {nano.rtmi_responses[0].qsize()} samples.")
 
-	time.sleep(3)
-	print("Done!")
+	#sign-extend responses (for plotting)
+	rtmi_num_samples = min(nano.rtmi_responses[0].qsize(), nano.rtmi_responses[1].qsize())
+	for idx in range(rtmi_num_samples):
+		nano.rtmi_responses[0].queue[idx] = (nano.rtmi_responses[0].queue[idx] & 0x1FFF) - (nano.rtmi_responses[0].queue[idx] & 0x2000)
+		nano.rtmi_responses[1].queue[idx] = (nano.rtmi_responses[1].queue[idx] & 0x1FFF) - (nano.rtmi_responses[1].queue[idx] & 0x2000)
+
 	nano.stop()
 
 	#plot RTMI responses
-	plt.plot(nano.rtmi_responses[0].queue, label='OL_PHI')
-	plt.plot(nano.rtmi_responses[1].queue, label='EXTPOL_PHI')
+	plt.plot(nano.rtmi_responses[0].queue, label='TORQUE')
+	plt.plot(nano.rtmi_responses[1].queue, label='FLUX')
 	plt.legend()
 	plt.show()
+
 
 if __name__ == "__main__":
 	main()

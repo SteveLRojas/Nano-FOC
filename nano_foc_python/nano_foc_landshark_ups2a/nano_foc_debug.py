@@ -1,123 +1,47 @@
-import serial
-import time
-
-from queue import Queue
-import matplotlib.pyplot as plt
-import numpy as np
-import nano_foc_landshark_ups_regs as regs
-
-baud = 1000000
-port = "/dev/ttyACM0"
-ser = serial.Serial()
-debug = 0
-power_off = 0
-
-rtmi_responses = []
-for i in range(8):
-    rtmi_responses.append(Queue(maxsize = 1000000))
-
-def nano_configure_rtmi(trigger_mode, trigger_channel, num_channels, continuous_sampling, trigger, num_samples, threshold):
-    if(debug):
-        print("configure RTMI")
-    address = regs.FR_RTMI_THRESHOLD | 0x8000
-    bytes = address.to_bytes(2, 'big') + threshold.to_bytes(2, 'big')
-    ser.write(bytes)
-    address = regs.FR_RTMI_NUM_SAMPLES | 0x8000
-    bytes = address.to_bytes(2, 'big') + num_samples.to_bytes(2, 'big')
-    ser.write(bytes)
-    address = regs.FR_RTMI_CONTROL | 0x8000
-    value = trigger & 0x01
-    value = (value << 1) | (continuous_sampling & 0x01)
-    value = value << 2
-    value = (value << 4) | (num_channels & 0x0F)
-    value = (value << 4) | (trigger_channel & 0x0F)
-    value = (value << 4) | (trigger_mode & 0x0F)
-    bytes = address.to_bytes(2, 'big') + value.to_bytes(2, 'big')
-    ser.write(bytes)
-
-def nano_write_reg(address, value):
-    if(debug):
-        print("write")
-    address = address | 0x8000
-    bytes = address.to_bytes(2, 'big') + value.to_bytes(2, 'big')
-    ser.write(bytes)
-
-def nano_read_reg(address):
-    if(debug):
-        print("read")
-    bytes = address.to_bytes(2, 'big')
-    ser.write(bytes)
-    response = ser.read(3)
-    return int.from_bytes(response[1:], 'big')
-
-def nano_process_rtmi_responses():
-    if(debug):
-        print("process RTMI")
-    while ser.in_waiting >= 3:
-        response = ser.read(3)
-        channel_id = int.from_bytes(response[0:1], 'big')
-        value = int.from_bytes(response[1:3], 'big')
-        if(debug):
-            print(f"channel_id: 0x{channel_id:02X}")
-            print(f"value: 0x{value:04X}")
-        if(channel_id > 7):
-            print(f"Bad channel ID: 0x{channel_id:02X}, Value: 0x{value:04X}")
-        else:
-            rtmi_responses[channel_id].put(value)
-
-def nano_force_ol_velocity_zero():
-    acceleration = 0x3FFF
-    nano_write_reg(regs.R_OL_TARGET_VELOCITY, 0x0000)
-    for idx in range(13):
-        nano_write_reg(regs.R_OL_ACCELERATION, acceleration)
-        acceleration = acceleration >> 1
-
-def nano_init():
-    ser.baudrate = baud
-    ser.port = port
-    ser.dsrdtr = False
-    ser.dtr = False
-    ser.timeout = 1.0
-    ser.write_timeout = 1.0
-    ser.open()
-    nano_write_reg(regs.R_INT_OUT_CTRL, 0x0000)
-    nano_write_reg(regs.FR_RTMI_CONTROL, 0x0000)
-    time.sleep(0.5)
-    ser.reset_input_buffer()
-
-def nano_stop():
-    nano_write_reg(regs.R_OL_TARGET_VELOCITY, 0x0000)    #set target velocity to 0
-    nano_write_reg(regs.R_TORQUE_TARGET, 0x0000)    #set torque target to 0
-    nano_write_reg(regs.R_STATUS, 0x0000)    #power stage off
+import nano_foc_landshark_ups_platform as nano
 
 def main():
-    if(debug):
-        print("debug enabled")
+	nano.power_off = 0
+	unique_id = nano.init()
+	if unique_id == 0:
+		print("Could not find Nano-FOC test device!")
+		exit(1)
 
-    nano_init()
+	status = nano.read_reg(nano.regs.R_STATUS)
+	print(f"status: 0x{status:04X}")
+	print(f"\tocp: {bool(status & 0x0001)}")
+	print(f"\tuvp: {bool(status & 0x0002)}")
+	print(f"\thall_fault: {bool(status & 0x0004)}")
+	print(f"\tpower_stage_en: {bool(status & 0x0008)}")
+	print(f"\tadc_done: {bool(status & 0x0010)}")
+	print(f"\tkcl_done: {bool(status & 0x0020)}")
+	print(f"\tclarke_done: {bool(status & 0x0040)}")
+	print(f"\tpark_done: {bool(status & 0x0080)}")
+	print(f"\tpid_done: {bool(status & 0x0100)}")
+	print(f"\tlimiter_done: {bool(status & 0x0200)}")
+	print(f"\ti_park_done: {bool(status & 0x0400)}")
+	print(f"\ti_clarke_done: {bool(status & 0x0800)}")
+	print(f"\tbutton_d: 0x{(status >> 12):01X}")
 
-    status = nano_read_reg(regs.R_STATUS)
-    print(f"status: 0x{status:04X}")
-    print(f"\tocp: {bool(status & 0x0001)}")
-    print(f"\tuvp: {bool(status & 0x0002)}")
-    print(f"\thall_fault: {bool(status & 0x0004)}")
-    print(f"\tpower_stage_en: {bool(status & 0x0008)}")
-    print(f"\tadc_done: {bool(status & 0x0010)}")
-    print(f"\tkcl_done: {bool(status & 0x0020)}")
-    print(f"\tclarke_done: {bool(status & 0x0040)}")
-    print(f"\tpark_done: {bool(status & 0x0080)}")
-    print(f"\tpid_done: {bool(status & 0x0100)}")
-    print(f"\tlimiter_done: {bool(status & 0x0200)}")
-    print(f"\ti_park_done: {bool(status & 0x0400)}")
-    print(f"\ti_clarke_done: {bool(status & 0x0800)}")
-    print(f"\tbutton_d: 0x{(status >> 12):01X}")
+	print(f"i alpha: {nano.read_reg(nano.regs.R_I_ALPHA):04X}")
+	print(f"i beta: {nano.read_reg(nano.regs.R_I_BETA):04X}")
+	print(f"flux: {nano.read_reg(nano.regs.R_FLUX):04X}")
+	print(f"torque: {nano.read_reg(nano.regs.R_TORQUE):04X}")
+	print(f"flux target: {nano.read_reg(nano.regs.R_FLUX_TARGET):04X}")
+	print(f"flux kp: {nano.read_reg(nano.regs.R_FLUX_KP):04X}")
+	print(f"flux ki: {nano.read_reg(nano.regs.R_FLUX_KI):04X}")
+	print(f"flux_kd: {nano.read_reg(nano.regs.R_FLUX_KD):04X}")
+	print(f"flux pid out: {nano.read_reg(nano.regs.R_FLUX_PID_OUT):04X}")
+	print(f"v d ext: {nano.read_reg(nano.regs.R_V_D_EXT):04X}")
+	print(f"torque target: {nano.read_reg(nano.regs.R_TORQUE_TARGET):04X}")
+	print(f"torque kp: {nano.read_reg(nano.regs.R_TORQUE_KP):04X}")
+	print(f"torque ki: {nano.read_reg(nano.regs.R_TORQUE_KI):04X}")
+	print(f"torque kd: {nano.read_reg(nano.regs.R_TORQUE_KD):04X}")
+	print(f"torque pid out: {nano.read_reg(nano.regs.R_TORQUE_PID_OUT):04X}")
+	print(f"v d ext: {nano.read_reg(nano.regs.R_V_Q_EXT):04X}")
 
-    if(power_off):
-        time.sleep(3)
-        nano_stop()
-
-    print("Done!")
-    ser.close()
+	print("Done!")
+	nano.stop()
 
 if __name__ == "__main__":
-    main()
+	main()
